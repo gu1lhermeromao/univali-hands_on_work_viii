@@ -1,0 +1,57 @@
+name: Flutter CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar se o projeto Flutter já existe
+        id: check
+        run: |
+          if [ -f pubspec.yaml ]; then echo "exists=true" >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; echo "pubspec.yaml ainda não existe: nada a testar."; fi
+
+      - uses: subosito/flutter-action@v2
+        if: steps.check.outputs.exists == 'true'
+        with:
+          channel: stable
+          cache: true
+
+      - name: Instalar dependências
+        if: steps.check.outputs.exists == 'true'
+        run: flutter pub get
+
+      - name: Análise estática
+        if: steps.check.outputs.exists == 'true'
+        run: flutter analyze
+
+      - name: Testes automatizados (com cobertura)
+        if: steps.check.outputs.exists == 'true'
+        run: flutter test --coverage
+
+      - name: Gerar APK
+        if: steps.check.outputs.exists == 'true'
+        run: flutter build apk --release
+
+      - name: Guardar APK como artefato
+        if: steps.check.outputs.exists == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-release
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Publicar APK na Release (somente em tags v*)
+        if: steps.check.outputs.exists == 'true' && startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/app/outputs/flutter-apk/app-release.apk
