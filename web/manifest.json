@@ -1,6 +1,6 @@
 {
-    "name": "calculadora_subrede",
-    "short_name": "calculadora_subrede",
+    "name": "Bitsplitter",
+    "short_name": "Bitsplitter",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

@@ -42,9 +42,80 @@ class Ipv6SubnetResult {
   });
 }
 
+/// Aceita "192.168.0.0/24", "192.168.0.0 255.255.255.0" ou apenas "192.168.0.0" (assume /24)
+SubnetResult calculateSubnetFromInput(String rawInput) {
+  final cleaned = rawInput.trim();
+  if (cleaned.isEmpty) {
+    throw const FormatException(
+      'Informe o endereço IPv4/CIDR (ex.: 192.168.0.0/24).',
+    );
+  }
+
+  String ipPart;
+  String maskPart;
+
+  if (cleaned.contains('/')) {
+    final idx = cleaned.indexOf('/');
+    ipPart = cleaned.substring(0, idx).trim();
+    maskPart = cleaned.substring(idx + 1).trim();
+    if (ipPart.isEmpty || maskPart.isEmpty) {
+      throw const FormatException(
+        'Formato inválido. Use IP/CIDR (ex.: 192.168.0.0/24).',
+      );
+    }
+  } else if (cleaned.contains(RegExp(r'\s+'))) {
+    final parts = cleaned.split(RegExp(r'\s+'));
+    ipPart = parts.first.trim();
+    maskPart = parts.sublist(1).join('').trim();
+  } else {
+    ipPart = cleaned;
+    maskPart = '24';
+  }
+
+  return calculateSubnet(ipPart, maskPart);
+}
+
+/// Aceita "2804:14d:5c80::1/56" ou apenas "2804:14d:5c80::1" (assume /64)
+Ipv6SubnetResult calculateIpv6SubnetFromInput(String rawInput) {
+  final cleaned = rawInput.trim();
+  if (cleaned.isEmpty) {
+    throw const FormatException(
+      'Informe o endereço IPv6/Prefixo (ex.: 2804:14d:5c80::1/56).',
+    );
+  }
+
+  String ipPart;
+  String prefixPart;
+
+  if (cleaned.contains('/')) {
+    final idx = cleaned.indexOf('/');
+    ipPart = cleaned.substring(0, idx).trim();
+    prefixPart = cleaned.substring(idx + 1).trim();
+    if (ipPart.isEmpty || prefixPart.isEmpty) {
+      throw const FormatException(
+        'Formato inválido. Use IPv6/Prefixo (ex.: 2804:14d:5c80::1/56).',
+      );
+    }
+  } else if (cleaned.contains(RegExp(r'\s+'))) {
+    final parts = cleaned.split(RegExp(r'\s+'));
+    ipPart = parts.first.trim();
+    prefixPart = parts.sublist(1).join('').trim();
+  } else {
+    ipPart = cleaned;
+    prefixPart = '64';
+  }
+
+  return calculateIpv6Subnet(ipPart, prefixPart);
+}
+
 SubnetResult calculateSubnet(String rawIp, String rawMask) {
   final ipStr = rawIp.trim();
   final maskStr = rawMask.trim();
+
+  // Caso alguém passe "192.168.0.0/24" direto no primeiro parâmetro
+  if (ipStr.contains('/') && maskStr.isEmpty) {
+    return calculateSubnetFromInput(ipStr);
+  }
 
   final ipInt = _parseIpv4(ipStr);
   final prefix = _parseIpv4Mask(maskStr);
@@ -91,7 +162,7 @@ int _parseIpv4(String ip) {
   }
   int result = 0;
   for (final part in parts) {
-    final value = int.tryParse(part);
+    final value = int.tryParse(part.trim());
     if (value == null || value < 0 || value > 255) {
       throw const FormatException('Cada octeto IPv4 deve estar entre 0 e 255.');
     }
@@ -101,7 +172,7 @@ int _parseIpv4(String ip) {
 }
 
 int _parseIpv4Mask(String mask) {
-  final clean = mask.startsWith('/') ? mask.substring(1) : mask;
+  final clean = mask.startsWith('/') ? mask.substring(1).trim() : mask.trim();
 
   if (!clean.contains('.')) {
     final prefix = int.tryParse(clean);
@@ -130,13 +201,17 @@ int _parseIpv4Mask(String mask) {
 }
 
 String _intToIpv4(int value) {
-  return '${(value >> 24) & 0xFF}.${(value >> 16) & 0xFF}.${(value >> 8) & 0xFF}.${value & 0xFF}';
+  final o1 = (value >> 24) & 0xFF;
+  final o2 = (value >> 16) & 0xFF;
+  final o3 = (value >> 8) & 0xFF;
+  final o4 = value & 0xFF;
+  return o1.toString() + '.' + o2.toString() + '.' + o3.toString() + '.' + o4.toString();
 }
 
 Ipv6SubnetResult calculateIpv6Subnet(String rawIp, String rawPrefix) {
   final ipStr = rawIp.trim();
   final cleanPrefix = rawPrefix.trim().startsWith('/')
-      ? rawPrefix.trim().substring(1)
+      ? rawPrefix.trim().substring(1).trim()
       : rawPrefix.trim();
 
   final prefix = int.tryParse(cleanPrefix);
@@ -158,13 +233,13 @@ Ipv6SubnetResult calculateIpv6Subnet(String rawIp, String rawPrefix) {
 
   final totalAddresses = BigInt.one << hostBits;
   final totalLabel = hostBits > 53
-      ? '2^$hostBits (${_formatBigNumber(totalAddresses)})'
+      ? '2^' + hostBits.toString() + ' (' + _formatBigNumber(totalAddresses) + ')'
       : _formatBigNumber(totalAddresses);
 
   final String subnets64Label;
   if (prefix <= 64) {
     final count64 = BigInt.one << (64 - prefix);
-    subnets64Label = '${_formatBigNumber(count64)} redes /64';
+    subnets64Label = _formatBigNumber(count64) + ' redes /64';
   } else {
     subnets64Label = 'Sub-rede menor que /64';
   }
@@ -172,10 +247,10 @@ Ipv6SubnetResult calculateIpv6Subnet(String rawIp, String rawPrefix) {
   return Ipv6SubnetResult(
     compressedAddress: _bigIntToIpv6(ipBig, compress: true),
     expandedAddress: _bigIntToIpv6(ipBig, compress: false),
-    networkPrefix: '${_bigIntToIpv6(networkBig, compress: true)}/$prefix',
+    networkPrefix: _bigIntToIpv6(networkBig, compress: true) + '/' + prefix.toString(),
     expandedNetwork: _bigIntToIpv6(networkBig, compress: false),
-    firstAddress: _bigIntToIpv6(networkBig, compress: false),
-    lastAddress: _bigIntToIpv6(lastAddressBig, compress: false),
+    firstAddress: _bigIntToIpv6(networkBig, compress: true),
+    lastAddress: _bigIntToIpv6(lastAddressBig, compress: true),
     prefix: prefix,
     totalAddressesLabel: totalLabel,
     subnets64Label: subnets64Label,
@@ -269,7 +344,7 @@ String _bigIntToIpv6(BigInt value, {required bool compress}) {
       .map((g) => g.toRadixString(16))
       .join(':');
 
-  return '$left::$right';
+  return left + '::' + right;
 }
 
 String _formatBigNumber(BigInt number) {

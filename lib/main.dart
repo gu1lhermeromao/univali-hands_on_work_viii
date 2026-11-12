@@ -19,7 +19,7 @@ class CalculadoraApp extends StatelessWidget {
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Calculadora IPv4 & IPv6',
+      title: 'Bitsplitter',
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: scheme,
@@ -58,8 +58,7 @@ class CalculadoraPage extends StatefulWidget {
 }
 
 class _CalculadoraPageState extends State<CalculadoraPage> {
-  final _ip = TextEditingController();
-  final _mask = TextEditingController();
+  final _cidrInput = TextEditingController();
 
   IpVersion _version = IpVersion.ipv4;
   SubnetResult? _ipv4Result;
@@ -73,8 +72,7 @@ class _CalculadoraPageState extends State<CalculadoraPage> {
     if (_version == novaVersao) return;
     setState(() {
       _version = novaVersao;
-      _ip.clear();
-      _mask.clear();
+      _cidrInput.clear();
       _ipv4Result = null;
       _ipv6Result = null;
       _error = null;
@@ -84,12 +82,32 @@ class _CalculadoraPageState extends State<CalculadoraPage> {
   void _preencherExemplo() {
     setState(() {
       if (_version == IpVersion.ipv4) {
-        _ip.text = '192.168.10.37';
-        _mask.text = '/26';
+        _cidrInput.text = '192.168.0.0/24';
       } else {
-        _ip.text = '2804:14d:5c80::1';
-        _mask.text = '/56';
+        _cidrInput.text = '2804:14d:5c80::1/56';
       }
+    });
+    _calcular();
+  }
+
+  void _aplicarPreset(String preset) {
+    final current = _cidrInput.text.trim();
+    String baseIp;
+
+    if (current.isEmpty) {
+      baseIp = _version == IpVersion.ipv4
+          ? '192.168.0.0'
+          : '2804:14d:5c80::1';
+    } else if (current.contains('/')) {
+      baseIp = current.split('/').first.trim();
+    } else if (current.contains(RegExp(r'\s+'))) {
+      baseIp = current.split(RegExp(r'\s+')).first.trim();
+    } else {
+      baseIp = current;
+    }
+
+    setState(() {
+      _cidrInput.text = baseIp + preset;
     });
     _calcular();
   }
@@ -97,31 +115,44 @@ class _CalculadoraPageState extends State<CalculadoraPage> {
   void _calcular() {
     FocusScope.of(context).unfocus();
 
-    if (_ip.text.trim().isEmpty || _mask.text.trim().isEmpty) {
+    final raw = _cidrInput.text.trim();
+    if (raw.isEmpty) {
       setState(() {
         _ipv4Result = null;
         _ipv6Result = null;
         _error = _version == IpVersion.ipv4
-            ? 'Preencha o endereço IPv4 e a máscara.'
-            : 'Preencha o endereço IPv6 e o prefixo.';
+            ? 'Digite o IPv4 com CIDR (ex.: 192.168.0.0/24).'
+            : 'Digite o IPv6 com prefixo (ex.: 2804:14d:5c80::1/56).';
       });
       return;
     }
 
+    if (raw.contains(':') && _version != IpVersion.ipv6) {
+      _version = IpVersion.ipv6;
+    } else if (raw.contains('.') && !raw.contains(':') && _version != IpVersion.ipv4) {
+      _version = IpVersion.ipv4;
+    }
+
     try {
       if (_version == IpVersion.ipv4) {
-        final result = calculateSubnet(_ip.text, _mask.text);
+        final result = calculateSubnetFromInput(raw);
         setState(() {
           _ipv4Result = result;
           _ipv6Result = null;
           _error = null;
+          if (!raw.contains('/') && !raw.contains(' ')) {
+            _cidrInput.text = raw + '/' + result.prefix.toString();
+          }
         });
       } else {
-        final result = calculateIpv6Subnet(_ip.text, _mask.text);
+        final result = calculateIpv6SubnetFromInput(raw);
         setState(() {
           _ipv6Result = result;
           _ipv4Result = null;
           _error = null;
+          if (!raw.contains('/') && !raw.contains(' ')) {
+            _cidrInput.text = raw + '/' + result.prefix.toString();
+          }
         });
       }
     } on FormatException catch (exception) {
@@ -134,8 +165,7 @@ class _CalculadoraPageState extends State<CalculadoraPage> {
   }
 
   void _limpar() {
-    _ip.clear();
-    _mask.clear();
+    _cidrInput.clear();
     setState(() {
       _ipv4Result = null;
       _ipv6Result = null;
@@ -145,8 +175,7 @@ class _CalculadoraPageState extends State<CalculadoraPage> {
 
   @override
   void dispose() {
-    _ip.dispose();
-    _mask.dispose();
+    _cidrInput.dispose();
     super.dispose();
   }
 
@@ -161,10 +190,10 @@ class _CalculadoraPageState extends State<CalculadoraPage> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 680),
             child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
               children: [
                 Container(
-                  padding: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       colors: [Color(0xFF1E3A8A), Color(0xFF2563EB)],
@@ -191,30 +220,31 @@ class _CalculadoraPageState extends State<CalculadoraPage> {
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: const Icon(
-                              Icons.hub_rounded,
-                              size: 32,
+                              Icons.call_split_rounded,
+                              size: 30,
                               color: Colors.white,
                             ),
                           ),
-                          const SizedBox(width: 16),
+                          const SizedBox(width: 14),
                           const Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Calculadora de Sub-rede',
+                                  'Bitsplitter',
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 22,
                                     fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.3,
                                   ),
                                 ),
                                 SizedBox(height: 4),
                                 Text(
-                                  'Dimensionamento de blocos IPv4 e prefixos IPv6',
+                                  'Calculadora de Sub-redes IPv4 e IPv6',
                                   style: TextStyle(
                                     color: Colors.white70,
-                                    fontSize: 13.5,
+                                    fontSize: 13,
                                   ),
                                 ),
                               ],
@@ -222,7 +252,7 @@ class _CalculadoraPageState extends State<CalculadoraPage> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 18),
                       SizedBox(
                         width: double.infinity,
                         child: SegmentedButton<IpVersion>(
@@ -232,22 +262,26 @@ class _CalculadoraPageState extends State<CalculadoraPage> {
                             selectedBackgroundColor: Colors.white,
                             selectedForegroundColor: const Color(0xFF1E3A8A),
                             side: BorderSide.none,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
                           ),
                           segments: const [
                             ButtonSegment(
                               value: IpVersion.ipv4,
-                              icon: Icon(Icons.lan_outlined),
+                              icon: Icon(Icons.lan_outlined, size: 18),
                               label: Text(
-                                'IPv4 (32 bits)',
+                                'IPv4',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(fontWeight: FontWeight.w600),
                               ),
                             ),
                             ButtonSegment(
                               value: IpVersion.ipv6,
-                              icon: Icon(Icons.public),
+                              icon: Icon(Icons.public, size: 18),
                               label: Text(
-                                'IPv6 (128 bits)',
+                                'IPv6',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(fontWeight: FontWeight.w600),
                               ),
                             ),
@@ -260,7 +294,7 @@ class _CalculadoraPageState extends State<CalculadoraPage> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
                 Card(
                   elevation: 0,
                   color: Colors.white,
@@ -269,92 +303,78 @@ class _CalculadoraPageState extends State<CalculadoraPage> {
                     side: BorderSide(color: Colors.blueGrey.shade100),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(18),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              isIpv4
-                                  ? 'Parâmetros da Rede IPv4'
-                                  : 'Parâmetros do Prefixo IPv6',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
+                            Expanded(
+                              child: Text(
+                                isIpv4
+                                    ? 'Bloco IPv4'
+                                    : 'Bloco IPv6',
+                                style: const TextStyle(
+                                  fontSize: 15.5,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
+                            const SizedBox(width: 8),
                             TextButton.icon(
                               onPressed: _preencherExemplo,
-                              icon: const Icon(Icons.bolt, size: 18),
-                              label: const Text('Testar exemplo'),
+                              style: TextButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                              ),
+                              icon: const Icon(Icons.bolt, size: 16),
+                              label: const Text(
+                                'Exemplo',
+                                style: TextStyle(fontSize: 13),
+                              ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 12),
                         TextField(
                           key: const Key('ip'),
-                          controller: _ip,
-                          keyboardType: TextInputType.text,
-                          textInputAction: TextInputAction.next,
-                          style: const TextStyle(fontFamily: 'monospace'),
-                          decoration: InputDecoration(
-                            labelText:
-                                isIpv4 ? 'Endereço IPv4' : 'Endereço IPv6',
-                            hintText: isIpv4
-                                ? 'Ex.: 192.168.10.37'
-                                : 'Ex.: 2804:14d:5c80::1',
-                            prefixIcon: const Icon(Icons.language),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        TextField(
-                          key: const Key('mask'),
-                          controller: _mask,
+                          controller: _cidrInput,
                           keyboardType: TextInputType.text,
                           textInputAction: TextInputAction.done,
                           onSubmitted: (_) => _calcular(),
-                          style: const TextStyle(fontFamily: 'monospace'),
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 15,
+                          ),
                           decoration: InputDecoration(
                             labelText: isIpv4
-                                ? 'Máscara ou CIDR'
-                                : 'Prefixo CIDR IPv6',
+                                ? 'Endereço IPv4/CIDR'
+                                : 'Endereço IPv6/Prefixo',
                             hintText: isIpv4
-                                ? 'Ex.: /26 ou 255.255.255.192'
-                                : 'Ex.: /56 ou /64',
-                            prefixIcon: const Icon(Icons.settings_ethernet),
+                                ? 'Ex.: 192.168.0.0/24'
+                                : 'Ex.: 2804:14d:5c80::1/56',
+                            prefixIcon: const Icon(Icons.terminal_rounded),
                           ),
                         ),
                         const SizedBox(height: 12),
                         Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
+                          spacing: 4,
+                          runSpacing: 4,
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            Text(
-                              'Atalhos:',
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                color: Colors.blueGrey.shade600,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
                             ...presets.map(
                               (preset) => ActionChip(
                                 label: Text(preset),
                                 visualDensity: VisualDensity.compact,
-                                onPressed: () {
-                                  _mask.text = preset;
-                                  if (_ip.text.trim().isNotEmpty) {
-                                    _calcular();
-                                  }
-                                },
+                                onPressed: () => _aplicarPreset(preset),
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 18),
                         Row(
                           children: [
                             Expanded(
@@ -363,35 +383,40 @@ class _CalculadoraPageState extends State<CalculadoraPage> {
                                 onPressed: _calcular,
                                 style: FilledButton.styleFrom(
                                   padding: const EdgeInsets.symmetric(
-                                    vertical: 16,
+                                    vertical: 14,
+                                    horizontal: 12,
                                   ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(14),
                                   ),
                                 ),
-                                icon: const Icon(Icons.calculate_outlined),
-                                label: const Text(
-                                  'Calcular Sub-rede',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.bold,
+                                icon: const Icon(Icons.calculate_outlined, size: 20),
+                                label: const Flexible(
+                                  child: Text(
+                                    'Calcular',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: 10),
                             OutlinedButton.icon(
                               onPressed: _limpar,
                               style: OutlinedButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 18,
-                                  vertical: 16,
+                                  horizontal: 14,
+                                  vertical: 14,
                                 ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14),
                                 ),
                               ),
-                              icon: const Icon(Icons.refresh),
+                              icon: const Icon(Icons.refresh, size: 20),
                               label: const Text('Limpar'),
                             ),
                           ],
@@ -430,11 +455,11 @@ class _CalculadoraPageState extends State<CalculadoraPage> {
                   ),
                 ],
                 if (_ipv4Result != null) ...[
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 18),
                   _buildIpv4ResultCard(_ipv4Result!),
                 ],
                 if (_ipv6Result != null) ...[
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 18),
                   _buildIpv6ResultCard(_ipv6Result!),
                 ],
               ],
@@ -454,51 +479,55 @@ class _CalculadoraPageState extends State<CalculadoraPage> {
         side: BorderSide(color: Colors.blueGrey.shade100),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 const Text(
                   'Resultado IPv4',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
+                    horizontal: 10,
+                    vertical: 5,
                   ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFDBEAFE),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    '${result.network}/${result.prefix}',
+                    result.network + '/' + result.prefix.toString(),
                     style: const TextStyle(
                       color: Color(0xFF1E40AF),
                       fontWeight: FontWeight.bold,
                       fontFamily: 'monospace',
+                      fontSize: 13,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             _ResultRow(
               icon: Icons.security,
-              label: 'Máscara Decimal',
-              value: '${result.mask} (/${result.prefix})',
+              label: 'Máscara',
+              value: result.mask + ' (/' + result.prefix.toString() + ')',
             ),
             _ResultRow(
               icon: Icons.router,
-              label: 'Endereço de Rede',
+              label: 'Network',
               value: result.network,
             ),
             _ResultRow(
               icon: Icons.campaign,
-              label: 'Endereço de Broadcast',
+              label: 'Broadcast',
               value: result.broadcast,
             ),
             _ResultRow(
@@ -514,7 +543,7 @@ class _CalculadoraPageState extends State<CalculadoraPage> {
             _ResultRow(
               icon: Icons.devices,
               label: 'Total de Hosts Utilizáveis',
-              value: '${result.usableHosts}',
+              value: result.usableHosts.toString(),
               isLast: true,
             ),
           ],
@@ -532,52 +561,51 @@ class _CalculadoraPageState extends State<CalculadoraPage> {
         side: BorderSide(color: Colors.blueGrey.shade100),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 const Text(
                   'Resultado IPv6',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
+                    horizontal: 10,
+                    vertical: 5,
                   ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFDBEAFE),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    '/${result.prefix}',
+                    '/' + result.prefix.toString(),
                     style: const TextStyle(
                       color: Color(0xFF1E40AF),
                       fontWeight: FontWeight.bold,
                       fontFamily: 'monospace',
+                      fontSize: 13,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             _ResultRow(
               icon: Icons.account_tree_outlined,
-              label: 'Prefixo da Rede (Abreviado)',
+              label: 'Prefixo da Rede',
               value: result.networkPrefix,
             ),
             _ResultRow(
               icon: Icons.compress,
               label: 'Endereço Comprimido',
               value: result.compressedAddress,
-            ),
-            _ResultRow(
-              icon: Icons.open_in_full,
-              label: 'Endereço Expandido',
-              value: result.expandedAddress,
             ),
             _ResultRow(
               icon: Icons.first_page,
@@ -659,7 +687,7 @@ class _ResultRow extends StatelessWidget {
                 SelectableText(
                   value,
                   style: const TextStyle(
-                    fontSize: 14.5,
+                    fontSize: 14,
                     fontWeight: FontWeight.bold,
                     fontFamily: 'monospace',
                     color: Color(0xFF0F172A),
@@ -679,7 +707,7 @@ class _ResultRow extends StatelessWidget {
               Clipboard.setData(ClipboardData(text: value));
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Copiado: $value'),
+                  content: Text('Copiado: ' + value),
                   duration: const Duration(seconds: 1),
                   behavior: SnackBarBehavior.floating,
                 ),
