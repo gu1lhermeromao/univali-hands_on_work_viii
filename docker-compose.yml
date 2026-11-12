@@ -1,0 +1,22 @@
+services:
+  flutter:
+    image: ghcr.io/cirruslabs/flutter:stable
+    container_name: calculadora_subrede_flutter
+    working_dir: /app
+    stdin_open: true
+    tty: true
+    privileged: true
+    network_mode: host
+    volumes:
+      - .:/app
+      - flutter_pub_cache:/root/.pub-cache
+      - gradle_cache:/root/.gradle
+      - /dev/bus/usb:/dev/bus/usb
+    environment:
+      ANDROID_HOME: /opt/android-sdk
+      ANDROID_SDK_ROOT: /opt/android-sdk
+    command: tail -f /dev/null
+
+volumes:
+  flutter_pub_cache:
+  gradle_cache:
